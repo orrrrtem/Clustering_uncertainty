@@ -14,6 +14,8 @@ warnings.filterwarnings('ignore')
 from tqdm.auto import tqdm
 
 from scipy.sparse import csgraph
+from scipy import stats
+
 from sklearn.metrics.cluster import rand_score
 #from sklearn.metrics import rand_score
 from sklearn.metrics.cluster import adjusted_rand_score
@@ -62,7 +64,7 @@ def get_rs_from_fixed_weighted_degree(degree=16, cluster_size= 20, num_clusters=
     return np.vstack((r_ins,r_outs))
     
 
-def compute_clustering(rs, algos, num_clusters = 2, cluster_size=5, sample_vol = 10, num_repeats = 200):
+def compute_clustering(rs, algos, num_clusters = 2, cluster_size=5, sample_vol = 10, num_repeats = 200, corr_estimator=stats.pearsonr):
     mean_covs = [get_mean_cov(num_clusters = num_clusters, cluster_size = cluster_size, r_in = rs[0][i], r_out = rs[1][i]) for i in range(rs.shape[1])]
     means = [mean_cov[0] for mean_cov in mean_covs]
     covs = [mean_cov[1] for mean_cov in mean_covs]
@@ -70,7 +72,7 @@ def compute_clustering(rs, algos, num_clusters = 2, cluster_size=5, sample_vol =
     [set_zero_weights_to_very_low(true_graph) for true_graph in true_graphs]
     samples_bags = [generate_samples_bag(means[i], covs[i], bags = num_repeats, sample_size=sample_vol) for i,cov in enumerate(covs)]
     print('Generating graphs started')
-    estimated_graphs_bags = [[set_zero_weights_to_very_low(get_corr_estimate(sample)) for sample in samples_bag] for samples_bag in tqdm(samples_bags)]
+    estimated_graphs_bags = [[set_zero_weights_to_very_low(get_corr_estimate(sample, corr_estimator)) for sample in samples_bag] for samples_bag in tqdm(samples_bags)]
     print('Generating graphs complete')
 
     true_labels = get_true_labels(num_clusters, cluster_size)
