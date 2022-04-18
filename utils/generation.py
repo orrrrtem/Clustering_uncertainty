@@ -1,5 +1,6 @@
 import numpy as np
 from scipy import stats
+from . import parallel
 
 # Student's T random variable
 def multivariate_t_rvs(m, S, n=1, df=np.inf):
@@ -69,4 +70,20 @@ def get_corr_estimate(sample, corr_estimator = stats.pearsonr):
     
     return corr_estimate
 
+class corr_estimate_parallel(object):
+    def __init__(self, samples_bags, corr_estimator, backend = 'threading'):
+        self.samples_bags = samples_bags
+        self.corr_estimator = corr_estimator
+        self.backend = backend
+    
+    def get_estimations(self):
+        indexes = [i for i in range(len(self.samples_bags))]
+        estimations = parallel.For(indexes, backend  = self.backend, progress=False)(self.get_estimate_bag)
+        return estimations
+    def get_estimate_bag(self, index):
+        indexes = [(index, i) for i in range(len(self.samples_bags[index]))]
+        return parallel.For(indexes, backend  = self.backend, progress=False)(self._estimate_sample)
+
+    def _estimate_sample(self, index):
+        return set_zero_weights_to_very_low(get_corr_estimate(self.samples_bags[index[0]][index[1]], self.corr_estimator))
 
