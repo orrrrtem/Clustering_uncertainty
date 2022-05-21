@@ -2,6 +2,10 @@ import numpy as np
 from scipy import stats
 from . import parallel
 
+
+def fechner_corr(x,y):
+    return np.sum(np.sign(x*y)) / x.shape[0], 0
+
 # Student's T random variable
 def multivariate_t_rvs(m, S, n=1, df=np.inf):
     '''generate random variables of multivariate t distribution

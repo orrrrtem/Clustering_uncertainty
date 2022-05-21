@@ -25,6 +25,7 @@ from sklearn.metrics.cluster import mutual_info_score
 import networkx.algorithms.community as nx_comm
 
 from .generation import get_mean_cov, get_cor_from_cov, generate_samples_bag, set_zero_weights_to_very_low, get_corr_estimate
+from . import parallel
 
 #from matplotlib.pyplot import figure
 
@@ -73,6 +74,36 @@ def compute_clustering(rs, algos, num_clusters = 2, cluster_size=5, sample_vol =
     samples_bags = [generate_samples_bag(means[i], covs[i], bags = num_repeats, sample_size=sample_vol, distribution = distribution, **kwargs) for i,cov in enumerate(covs)]
     print('Generating graphs started')
     estimated_graphs_bags = [[set_zero_weights_to_very_low(get_corr_estimate(sample, corr_estimator)) for sample in samples_bag] for samples_bag in tqdm(samples_bags)]
+    print('Generating graphs complete')
+
+    true_labels = get_true_labels(num_clusters, cluster_size)
+
+    result = dict()    
+
+    for algo in algos:
+        algo_result = []
+        print(algo.__name__ + ' started')
+        for idx, estimated_graphs_bag in enumerate(tqdm(estimated_graphs_bags)):
+            repeat_result = []
+            for estimated_graph in estimated_graphs_bag:
+                repeat_result.append(algo(estimated_graph, num_clusters))
+            algo_result.append(repeat_result)
+                
+        print(algo.__name__ + ' complete')
+        result[algo.__name__] = algo_result
+
+    return true_labels, result, estimated_graphs_bags
+
+def compute_clustering_parallel(rs, algos, num_clusters = 2, cluster_size=5, sample_vol = 10, num_repeats = 200, corr_estimator=stats.pearsonr, distribution = np.random.multivariate_normal, **kwargs):
+    mean_covs = [get_mean_cov(num_clusters = num_clusters, cluster_size = cluster_size, r_in = rs[0][i], r_out = rs[1][i]) for i in range(rs.shape[1])]
+    means = [mean_cov[0] for mean_cov in mean_covs]
+    covs = [mean_cov[1] for mean_cov in mean_covs]
+    true_graphs = [get_cor_from_cov(cov) for cov in covs]
+    [set_zero_weights_to_very_low(true_graph) for true_graph in true_graphs]
+    samples_bags = [generate_samples_bag(means[i], covs[i], bags = num_repeats, sample_size=sample_vol, distribution = distribution, **kwargs) for i,cov in enumerate(covs)]
+    print('Generating graphs started')
+    estimated_graphs_bags = [[set_zero_weights_to_very_low(get_corr_estimate(sample, corr_estimator)) for sample in samples_bag] for samples_bag in tqdm(samples_bags)]
+    estimated_graphs_bags = parallel.For()
     print('Generating graphs complete')
 
     true_labels = get_true_labels(num_clusters, cluster_size)
