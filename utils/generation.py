@@ -4,7 +4,9 @@ from . import parallel
 
 
 def fechner_corr(x,y):
-    return np.sum(np.sign(x*y)) / x.shape[0], 0
+    x_div = x -np.mean(x)
+    y_div = y - np.mean(y)
+    return np.sum(np.sign(x_div * y_div)) / x.shape[0], 0
 
 # Student's T random variable
 def multivariate_t_rvs(m, S, n=1, df=np.inf):
