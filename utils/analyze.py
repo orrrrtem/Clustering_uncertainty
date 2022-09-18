@@ -24,7 +24,7 @@ from sklearn.metrics.cluster import mutual_info_score
 
 import networkx.algorithms.community as nx_comm
 
-from .generation import get_mean_cov, get_cor_from_cov, generate_samples_bag, set_zero_weights_to_very_low, get_corr_estimate
+from .generation import get_mean_cov, get_cor_from_cov, generate_samples_bag, set_zero_weights_to_very_low, get_corr_estimate, multivariate_t_rvs
 from . import parallel
 
 #from matplotlib.pyplot import figure
@@ -195,3 +195,81 @@ def metrics_to_df(metrics, rs):
     df['r_in'] = rs[0]
     df.set_index('r_in', inplace=True)
     return df
+
+
+def analyze_mixture(r_in, r_out, algos, num_clusters = 2, cluster_size=5, sample_vol = 10, num_repeats = 200, corr_estimator=stats.pearsonr, distributions = [np.random.multivariate_normal, multivariate_t_rvs], **kwargs):
+    mean, cov = get_mean_cov(num_clusters = num_clusters, cluster_size = cluster_size, r_in = r_in, r_out = r_out) 
+    true_graph = get_cor_from_cov(cov)
+    set_zero_weights_to_very_low(true_graph)
+    distr1 = np.random.multivariate_normal#distributions[0]
+    distr2 = multivariate_t_rvs#distributions[1]
+    print(distr1)
+    samples_bag_distr1 = generate_samples_bag(mean, cov, bags = num_repeats, sample_size=sample_vol, distribution = distr1, **kwargs)
+    samples_bag_distr2 = generate_samples_bag(mean, cov, bags = num_repeats, sample_size=sample_vol, distribution = distr2, **kwargs)
+    print('Generating graphs started')
+    estimated_graphs_distr1 = [set_zero_weights_to_very_low(get_corr_estimate(sample, corr_estimator)) for sample in samples_bag_distr1]
+    estimated_graphs_distr2 = [set_zero_weights_to_very_low(get_corr_estimate(sample, corr_estimator)) for sample in samples_bag_distr2]
+    print('Generating graphs complete')
+    estimated_graphs_distrs = [estimated_graphs_distr1, estimated_graphs_distr2]
+    true_labels = get_true_labels(num_clusters, cluster_size)
+
+    result = dict()    
+    eps = np.linspace( 0, 1, 100)
+    for algo in algos:
+        algo_result = []
+        print(algo.__name__ + ' started')
+        for ep in tqdm(eps):
+            repeat_result = []
+            for g1,g2 in zip(estimated_graphs_distr1, estimated_graphs_distr2):
+                g = g1
+                if int(np.random.binomial(1, 1 - ep, 1)[0]):
+                    g = g2
+                repeat_result.append(algo(g, num_clusters))
+            algo_result.append(repeat_result)
+                
+        print(algo.__name__ + ' complete')
+        result[algo.__name__] = algo_result
+
+    return true_labels, result, estimated_graphs_distrs, eps
+
+
+def plot_quality_mixture(eps, metrics, concrete_metrics=None):
+    #figure(figsize=(10, 12), dpi=100)
+    fig, ax = plt.subplots()
+
+    colors = ['-b', '-r', '-g', '-y', '-p', '-c', '-m']
+    #if len(metrics) * len(list(metrics.values())[0]) > len(colors):
+    reduced_metrics = nested_dict_to_dict(metrics)
+    #colors = get_cmap(len(reduced_metrics))
+    c = 0
+    if(concrete_metrics):
+        for i, algo_metric in enumerate(reduced_metrics):
+            if algo_metric[1] is concrete_metrics:
+                ax.plot(eps, reduced_metrics[algo_metric], colors[c], label=algo_metric[1] + ' ' + algo_metric[0])
+                c+=1
+    else:
+        for i, algo_metric in enumerate(reduced_metrics):
+                ax.plot(eps, reduced_metrics[algo_metric], colors[c], label=algo_metric[1] + ' ' + algo_metric[0])
+                c+= 1
+    #ax.axis('equal')#ax.axis('p_in')
+    leg = ax.legend()
+    #plt.plot(p_ins[:len(metric)], metric)
+    plt.ylabel('Metric value', size=10)
+    plt.xlabel('eps', size=10)
+    plt.title('Mixture uncertainty', size=14)
+
+    return
+
+def validation(true_labels, result, estimated_graphs_distrs, eps):
+    metrics_by_algos = dict()
+    for algo in tqdm(result):
+        metrics = dict()
+        metrics['RI'] = [np.mean(np.array([rand_score(true_labels, labels) for labels in labels_repeated])) for labels_repeated in result[algo]]
+        metrics['ARI'] = [np.mean(np.array([adjusted_rand_score(true_labels, labels) for labels in labels_repeated])) for labels_repeated in result[algo]]
+        metrics['MI'] = [np.mean(np.array([mutual_info_score(true_labels, labels) for labels in labels_repeated])) for labels_repeated in result[algo]]
+        metrics['AMI'] = [np.mean(np.array([adjusted_mutual_info_score(true_labels, labels) for labels in labels_repeated])) for labels_repeated in result[algo]]
+        #metrics['modularity'] = [np.mean(np.array([nx_comm.modularity(true_labels, get_partition(labels)) for labels in labels_repeated])) for labels_repeated in result[algo]]
+        metrics_by_algos[algo] = metrics
+    plot_quality_mixture(eps, metrics_by_algos, 'ARI')
+    plot_quality_mixture(eps, metrics_by_algos, 'AMI')
+    return metrics_by_algos, eps

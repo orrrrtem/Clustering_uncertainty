@@ -9,7 +9,7 @@ def fechner_corr(x,y):
     return np.sum(np.sign(x_div * y_div)) / x.shape[0], 0
 
 # Student's T random variable
-def multivariate_t_rvs(m, S, n=1, df=np.inf):
+def multivariate_t_rvs(m, S, n=1, df=3):
     '''generate random variables of multivariate t distribution
     Parameters
     ----------
@@ -53,10 +53,10 @@ def get_cor_from_cov(covariance):
     return correlation
 
 def generate_samples_bag(mean, cov, bags = 10, sample_size = 50, distribution = np.random.multivariate_normal, **kwargs):
-    if not len(kwargs):
-        return np.hsplit(distribution(mean, cov, sample_size * bags).T, bags)
-    else:
+    if distribution.__name__ == 'multivariate_t_rvs' and len(kwargs):
         return np.hsplit(distribution(mean, cov, sample_size * bags, kwargs['df']).T, bags)
+    else:
+        return np.hsplit(distribution(mean, cov, sample_size * bags).T, bags)
 
 #this function is required since networkx does not link vertices with zero weigth
 #TODO - remove this solutiuion as it slightly moves distribution if zero is in sample
@@ -93,3 +93,10 @@ class corr_estimate_parallel(object):
     def _estimate_sample(self, index):
         return set_zero_weights_to_very_low(get_corr_estimate(self.samples_bags[index[0]][index[1]], self.corr_estimator))
 
+
+# def get_true_graph():
+#     mean_covs = [get_mean_cov(num_clusters = num_clusters, cluster_size = cluster_size, r_in = rs[0][i], r_out = rs[1][i]) for i in range(rs.shape[1])]
+#     means = [mean_cov[0] for mean_cov in mean_covs]
+#     covs = [mean_cov[1] for mean_cov in mean_covs]
+#     true_graph = get_cor_from_cov(cov)
+#     return true_graph
